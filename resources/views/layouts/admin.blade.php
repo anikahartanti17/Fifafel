@@ -1,37 +1,37 @@
 <!DOCTYPE html>
 @php
-    use Illuminate\Support\Facades\Auth;
-    use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
-    $user = Auth::guard('admin')->user();
-    $role = $user->role ?? null;
+$user = Auth::guard('admin')->user();
+$role = $user->role ?? null;
 
-    function getRuteByRole($role)
-    {
-        return match ($role) {
-            'padang' => [1, 2],
-            'solok' => [4],
-            'sawah_lunto' => [3],
-            'umum' => null,
-            default => [],
-        };
-    }
+function getRuteByRole($role)
+{
+return match ($role) {
+'padang' => [1, 2],
+'solok' => [4],
+'sawah_lunto' => [3],
+'umum' => null,
+default => [],
+};
+}
 
-    $ruteDiizinkan = getRuteByRole($role);
+$ruteDiizinkan = getRuteByRole($role);
 
-    $notifQuery = \App\Models\Pembayaran::with('pemesanan.penumpang', 'pemesanan.jadwal.rute')->where(
-        'status_konfirmasi',
-        'menunggu',
-    );
+$notifQuery = \App\Models\Pembayaran::with('pemesanan.penumpang', 'pemesanan.jadwal.rute')->where(
+'status_konfirmasi',
+'menunggu',
+);
 
-    if ($ruteDiizinkan !== null) {
-        $notifQuery->whereHas('pemesanan.jadwal', function ($q) use ($ruteDiizinkan) {
-            $q->whereIn('id_rute', $ruteDiizinkan);
-        });
-    }
+if ($ruteDiizinkan !== null) {
+$notifQuery->whereHas('pemesanan.jadwal', function ($q) use ($ruteDiizinkan) {
+$q->whereIn('id_rute', $ruteDiizinkan);
+});
+}
 
-    $notifs = $notifQuery->latest()->take(5)->get();
-    $notifCount = $notifs->count();
+$notifs = $notifQuery->latest()->take(5)->get();
+$notifCount = $notifs->count();
 @endphp
 
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -72,14 +72,12 @@
                     </a>
                 </li>
 
-
-
                 <li>
                     <a href="{{ route('pemesanan.index') }}"
                         class="flex items-center gap-2 px-4 py-2 rounded w-full
                                  {{ request()->routeIs('pemesanan.*') ? 'bg-gray-200 font-semibold text-indigo-600' : 'hover:bg-gray-200' }}">
                         <i data-lucide="ticket" class="w-5 h-5"></i>
-                        Pemesanan Tiket
+                        Data penjualan tiket
                     </a>
                 </li>
 
@@ -88,7 +86,7 @@
                         class="flex items-center gap-2 px-4 py-2 rounded w-full
                                 {{ request()->routeIs('pembayaran.*') ? 'bg-gray-200 font-semibold text-indigo-600' : 'hover:bg-gray-200' }}">
                         <i data-lucide="badge-check" class="w-5 h-5"></i>
-                        Konfirmasi Pembayaran
+                        Transaksi Online
                     </a>
                 </li>
                 <li>
@@ -99,16 +97,24 @@
                         Laporan
                     </a>
                 </li>
-                {{-- Cek jika bukan admin --}}
                 @if (Auth::guard('admin')->user()->role == 'umum')
-                    <li>
-                        <a href="{{ route('users.index') }}"
-                            class="flex items-center gap-2 px-4 py-2 rounded w-full
+                <li>
+                    <a href="{{ route('users.index') }}"
+                        class="flex items-center gap-2 px-4 py-2 rounded w-full
                             {{ request()->routeIs('Users.*') ? 'bg-gray-200 font-semibold text-indigo-600' : 'hover:bg-gray-200' }}">
-                            <i data-lucide="user" class="w-5 h-5"></i>
-                            Users
-                        </a>
-                    </li>
+                        <i data-lucide="user" class="w-5 h-5"></i>
+                        Users
+                    </a>
+                </li>
+
+                <li>
+                    <a href="{{ route('supir.index') }}"
+                        class="flex items-center gap-2 px-4 py-2 rounded w-full
+                            {{ request()->routeIs('Users.*') ? 'bg-gray-200 font-semibold text-indigo-600' : 'hover:bg-gray-200' }}">
+                        <i data-lucide="car-taxi-front" class="w-5 h-5"></i>
+                        Supirs
+                    </a>
+                </li>
                 @endif
             </ul>
         </aside>
@@ -133,14 +139,14 @@
                     <a href="{{ route('pemesanan.index') }}"
                         class="flex items-center gap-2 px-4 py-2 rounded hover:bg-gray-700 w-full">
                         <i data-lucide="ticket" class="w-5 h-5"></i>
-                        Pemesanan Tiket
+                        Rekap pemesanan tiket/ data penjualan tiket
                     </a>
                 </li>
                 <li>
                     <a href="{{ route('pembayaran.index') }}"
                         class="flex items-center gap-2 px-4 py-2 rounded hover:bg-gray-700 w-full">
                         <i data-lucide="badge-check" class="w-5 h-5"></i>
-                        Konfirmasi Pembayaran
+                        Konfirmasi pembayarn online/ Transaksi Online
                     </a>
                 </li>
                 <li>
@@ -151,7 +157,7 @@
                     </a>
                 </li>
                 @if (Auth::guard('admin')->user()->role == 'umum')
-                    <li>
+                <li>
                     <a href="{{ route('users.index') }}"
                         class="flex items-center gap-2 px-4 py-2 rounded hover:bg-gray-700 w-full">
                         <i data-lucide="user" class="w-5 h-5"></i>
@@ -182,7 +188,7 @@
                     </div>
 
                     @php
-                        $notifCount = $notifs->count();
+                    $notifCount = $notifs->count();
                     @endphp
 
 
@@ -199,11 +205,11 @@
                                             C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                                 </svg>
                                 @if ($notifCount > 0)
-                                    <span
-                                        class="absolute top-0 right-0 inline-block w-4 h-4 text-[10px] text-white bg-red-600
+                                <span
+                                    class="absolute top-0 right-0 inline-block w-4 h-4 text-[10px] text-white bg-red-600
                                             rounded-full text-center leading-4 font-bold animate-pulse">
-                                        {{ $notifCount }}
-                                    </span>
+                                    {{ $notifCount }}
+                                </span>
                                 @endif
                             </button>
 
@@ -214,25 +220,25 @@
                                     Notifikasi
                                 </div>
                                 @if ($notifCount > 0)
-                                    @foreach ($notifs as $notif)
-                                        @php
-                                            $pemesanan = $notif->pemesanan;
-                                            $penumpang = $pemesanan->penumpang->nama_penumpang ?? '-';
-                                            $rute_a = $pemesanan->jadwal->rute->asal ?? '-';
-                                            $rute_b = $pemesanan->jadwal->rute->tujuan ?? '-';
-                                            $tanggal = Carbon::parse($pemesanan->tanggal)->format('d M Y');
-                                            $waktu = $pemesanan->jadwal->jam_keberangkatan ?? '-';
-                                        @endphp
-                                        <a href="{{ route('pembayaran.index') }}"
-                                            class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition">
-                                            {{ $penumpang }} – ( {{ $rute_a }} – {{ $rute_b }} ) -
-                                            {{ $tanggal }} – {{ $waktu }}
-                                        </a>
-                                    @endforeach
+                                @foreach ($notifs as $notif)
+                                @php
+                                $pemesanan = $notif->pemesanan;
+                                $penumpang = $pemesanan->penumpang->nama_penumpang ?? '-';
+                                $rute_a = $pemesanan->jadwal->rute->asal ?? '-';
+                                $rute_b = $pemesanan->jadwal->rute->tujuan ?? '-';
+                                $tanggal = Carbon::parse($pemesanan->tanggal)->format('d M Y');
+                                $waktu = $pemesanan->jadwal->jam_keberangkatan ?? '-';
+                                @endphp
+                                <a href="{{ route('pembayaran.index') }}"
+                                    class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition">
+                                    {{ $penumpang }} – ( {{ $rute_a }} – {{ $rute_b }} ) -
+                                    {{ $tanggal }} – {{ $waktu }}
+                                </a>
+                                @endforeach
                                 @else
-                                    <div class="px-4 py-2 text-sm text-gray-500 italic">
-                                        Tidak ada notifikasi.
-                                    </div>
+                                <div class="px-4 py-2 text-sm text-gray-500 italic">
+                                    Tidak ada notifikasi.
+                                </div>
                                 @endif
                             </div>
                         </div>
@@ -246,8 +252,8 @@
                                 <div class="text-sm text-gray-700 group-hover:text-indigo-600 transition">
                                     {{ Auth::guard('admin')->user()->role }}
                                 </div>
-                                <svg class="w-4 h-4 text-gray-700 group-hover:text-indigo-600 transition" fill="none"
-                                    stroke="currentColor" viewBox="0 0 24 24">
+                                <svg class="w-4 h-4 text-gray-700 group-hover:text-indigo-600 transition"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M19 9l-7 7-7-7" />
                                 </svg>
@@ -348,9 +354,7 @@
     <!-- Aktifkan Lucide Icons -->
     <script>
         lucide.createIcons();
-    </script>
-    {{-- notifkasi --}}
-    <script>
+
         function toggleDropdown() {
             document.getElementById('userDropdown').classList.toggle('hidden');
         }
@@ -359,8 +363,13 @@
             document.getElementById('notifDropdown').classList.toggle('hidden');
         }
 
-    @stack('scripts')
+        document.getElementById('mobileSidebarToggle')?.addEventListener('click', () => {
+            document.getElementById('sidebar').classList.toggle('hidden');
+        });
+    </script>
 
+    {{-- Stack untuk script tambahan dari child --}}
+    @stack('scripts')
 </body>
 
 </html>

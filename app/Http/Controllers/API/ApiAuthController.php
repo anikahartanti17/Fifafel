@@ -40,7 +40,7 @@ class ApiAuthController extends Controller
         // Jika tidak ditemukan
         return response()->json([
             'status' => false,
-            'message' => 'Username atau password salah'
+            'message' => 'username atau password salah'
         ], 401);
     }
     //  public function login(Request $request)
