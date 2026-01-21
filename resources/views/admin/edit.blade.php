@@ -124,35 +124,34 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            function updateSeatColor(checkbox) {
-                const box = checkbox.closest('label').querySelector('.seat-box');
-                const isChecked = checkbox.checked;
-                const isDisabled = box.dataset.disabled === '1';
+        function updateSeatColor(checkbox) {
+            const box = checkbox.closest('label').querySelector('.seat-box');
+            const isChecked = checkbox.checked;
+            const isDisabled = box.dataset.disabled === '1';
 
-                box.classList.remove(
-                    'bg-blue-600', 'hover:bg-blue-700',
-                    'bg-red-600', 'text-white',
-                    'bg-gray-300', 'text-gray-500', 'cursor-not-allowed'
-                );
+            box.classList.remove(
+                'bg-blue-600', 'hover:bg-blue-700',
+                'bg-red-600', 'text-white',
+                'bg-gray-300', 'text-gray-500', 'cursor-not-allowed'
+            );
 
-                if (isDisabled) {
-                    box.classList.add('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
-                } else if (isChecked) {
-                    box.classList.add('bg-red-600', 'text-white');
-                } else {
-                    box.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
-                }
+            if (isDisabled) {
+                box.classList.add('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
+            } else if (isChecked) {
+                box.classList.add('bg-red-600', 'text-white');
+            } else {
+                box.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
             }
+        }
 
-            document.querySelectorAll('input[type="checkbox"][name="kursi[]"]').forEach(checkbox => {
-                checkbox.addEventListener('change', function() {
-                    updateSeatColor(checkbox);
-                });
-                updateSeatColor(checkbox);
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('input[name="kursi[]"]').forEach(cb => {
+                cb.addEventListener('change', () => updateSeatColor(cb));
+                updateSeatColor(cb);
             });
         });
     </script>
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $('#rute-select').on('change', function() {
@@ -178,6 +177,78 @@
             } else {
                 $('#jadwal-select').html('<option value="">-- Pilih Jam --</option>');
             }
+        });
+    </script>
+    <script>
+        function refreshKursi() {
+            const idRute = $('#rute-select').val();
+            const tanggal = $('#tanggal').val();
+            const idJadwal = $('#jadwal-select').val();
+
+            if (!idRute || !tanggal || !idJadwal) return;
+
+            $.ajax({
+                url: '/admin/get-kursi',
+                type: 'GET',
+                data: {
+                    id_rute: idRute,
+                    tanggal: tanggal,
+                    id_jadwal: idJadwal
+                },
+                success: function(res) {
+                    const terisi = res.data.map(String);
+
+                    document.querySelectorAll('input[name="kursi[]"]').forEach(cb => {
+                        const seat = cb.value;
+                        const box = cb.closest('label').querySelector('.seat-box');
+
+                        cb.disabled = false;
+                        box.dataset.disabled = '0';
+
+                        if (terisi.includes(seat) && !cb.checked) {
+                            cb.disabled = true;
+                            box.dataset.disabled = '1';
+                        }
+
+                        updateSeatColor(cb);
+                    });
+                }
+            });
+        }
+
+        // auto trigger
+        $('#rute-select, #tanggal, #jadwal-select').on('change', refreshKursi);
+    </script>
+    <script>
+        $(document).ready(function() {
+            // refresh kursi saat halaman edit dibuka
+            refreshKursi();
+
+            // reset kursi jika rute diganti
+            $('#rute-select').on('change', function() {
+                $('input[name="kursi[]"]').prop('checked', false);
+            });
+        });
+    </script>
+    <script>
+        $('input[name="kursi[]"]').on('change', function() {
+            const selected = $('input[name="kursi[]"]:checked')
+                .map(function() {
+                    return parseInt(this.value);
+                })
+                .get();
+
+            if (selected.length === 0) return;
+
+            $.ajax({
+                url: '/admin/lock-kursi',
+                type: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    id_jadwal: $('#jadwal-select').val(),
+                    kursi: selected
+                }
+            });
         });
     </script>
 

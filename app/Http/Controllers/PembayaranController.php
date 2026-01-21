@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Pembayaran;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class PembayaranController extends Controller
@@ -25,17 +26,25 @@ class PembayaranController extends Controller
         $query = Pembayaran::with(['pemesanan.penumpang', 'pemesanan.jadwal.rute'])
             ->where('status_konfirmasi', '!=', 'ditempat');
 
+        //  FILTER STATUS (opsional)
         if ($request->filled('status')) {
             $query->where('status_konfirmasi', $request->status);
         }
 
+        //  FILTER TANGGAL
         if ($request->filled('tanggal')) {
+            // Jika user pilih tanggal
             $query->whereHas('pemesanan', function ($q) use ($request) {
                 $q->whereDate('tanggal_pemesanan', $request->tanggal);
             });
+        } else {
+            //  DEFAULT: hanya hari ini
+            $query->whereHas('pemesanan', function ($q) {
+                $q->whereDate('tanggal_pemesanan', Carbon::today());
+            });
         }
 
-        // Filter berdasarkan rute yang diizinkan
+        // FILTER RUTE SESUAI ROLE
         if ($ruteDiizinkan !== null) {
             $query->whereHas('pemesanan.jadwal.rute', function ($q) use ($ruteDiizinkan) {
                 $q->whereIn('id_rute', $ruteDiizinkan);

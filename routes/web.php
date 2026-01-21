@@ -60,6 +60,9 @@ Route::middleware(['auth:admin'])->group(function () {
     Route::get('/tampilkan-kursi', [PemesananController::class, 'tampilkanKursi'])->name('penumpang.tampilkanKursi');
     Route::post('/pembayaran/{id}/konfirmasi', [PembayaranController::class, 'konfirmasi'])->name('pembayaran.konfirmasi');
     Route::get('/laporan/unduh', [LaporanController::class, 'unduh'])->name('laporan.unduh');
+
+    // Route::post('/admin/lock-kursi', [PemesananController::class, 'lockKursi']);
+    // Route::post('/admin/unlock-kursi', [PemesananController::class, 'unlockKursi']);
 });
 
 

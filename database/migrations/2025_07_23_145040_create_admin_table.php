@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('email', 50)->nullable();
             $table->string('password', 255);
             $table->enum('role', ['padang', 'solok', 'sawah_lunto', 'umum']);
-            $table->date('tanggal_lahir');
+            $table->date('tanggal_lahir')->nullable();
             $table->timestamps();
         });
     }

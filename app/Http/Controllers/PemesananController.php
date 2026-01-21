@@ -182,6 +182,9 @@ class PemesananController extends Controller
             'batas_waktu_pembayaran' => now(),
             'status_konfirmasi' => 'ditempat',
         ]);
+        DB::table('kursi_locks')
+            ->where('id_jadwal', $request->id_jadwal)
+            ->delete();
 
         return redirect()->route('pemesanan.index')->with('success', 'Pemesanan berhasil disimpan dan dianggap lunas!');
     }
@@ -290,6 +293,9 @@ class PemesananController extends Controller
                 ['jumlah_pembayaran' => $harga * count($kursiArray)]
             );
         });
+        DB::table('kursi_locks')
+            ->where('id_jadwal', $request->id_jadwal)
+            ->delete();
 
         return redirect()->route('pemesanan.index')->with('success', 'Pemesanan berhasil diperbarui.');
     }
@@ -303,25 +309,30 @@ class PemesananController extends Controller
 
     public function getKursi(Request $request)
     {
-        $id_rute = $request->query('id_rute');
-        $tanggal = $request->query('tanggal');
-        $id_jadwal = $request->query('id_jadwal');
+        $id_jadwal = $request->id_jadwal;
+        $tanggal   = $request->tanggal;
 
-        if (!$id_rute || !$tanggal || !$id_jadwal) {
+        if (!$id_jadwal || !$tanggal) {
             return response()->json(['data' => []]);
         }
 
-        $terisi = DB::table('detail_pemesanan')
+        $kursiTerisi = DB::table('detail_pemesanan')
             ->join('pemesanan', 'detail_pemesanan.id_pemesanan', '=', 'pemesanan.id_pemesanan')
+            ->join('pembayaran', 'pemesanan.id_pemesanan', '=', 'pembayaran.id_pemesanan')
             ->join('kursi', 'detail_pemesanan.id_kursi', '=', 'kursi.id_kursi')
-            ->join('jadwal', 'pemesanan.id_jadwal', '=', 'jadwal.id_jadwal')
-            ->where('pemesanan.tanggal_keberangkatan', $tanggal)
             ->where('pemesanan.id_jadwal', $id_jadwal)
-            ->where('jadwal.id_rute', $id_rute)
-            ->pluck('kursi.no_kursi');
+            ->where('pemesanan.tanggal_keberangkatan', $tanggal)
+            ->whereIn('pembayaran.status_konfirmasi', [
+                'menunggu',
+                'ditempat',
+                'berhasil'
+            ])
+            ->pluck('kursi.no_kursi')
+            ->toArray();
 
-        return response()->json(['data' => $terisi]);
+        return response()->json(['data' => $kursiTerisi]);
     }
+
 
     public function getJadwal(Request $request)
     {
@@ -405,4 +416,50 @@ class PemesananController extends Controller
             'sudahPilih'
         ));
     }
+    // public function lockKursi(Request $request)
+    // {
+    //     DB::table('kursi_locks')
+    //         ->where('id_jadwal', $request->id_jadwal)
+    //         ->where('admin_id', auth('admin')->id())
+    //         ->delete();
+
+    //     $request->validate([
+    //         'id_jadwal' => 'required|exists:jadwal,id_jadwal',
+    //         'kursi' => 'required|array'
+    //     ]);
+
+    //     $lockedUntil = now()->addMinutes(15);
+
+    //     $kursiMap = Kursi::whereIn('no_kursi', $request->kursi)
+    //         ->pluck('id_kursi', 'no_kursi');
+
+    //     foreach ($request->kursi as $noKursi) {
+    //         if (!isset($kursiMap[$noKursi])) continue;
+
+    //         DB::table('kursi_locks')->updateOrInsert(
+    //             [
+    //                 'id_jadwal' => $request->id_jadwal,
+    //                 'id_kursi'  => $kursiMap[$noKursi],
+    //                 'admin_id'  => auth('admin')->id(),
+    //             ],
+    //             [
+    //                 'locked_until' => $lockedUntil,
+    //                 'updated_at' => now(),
+    //             ]
+    //         );
+    //     }
+
+    //     return response()->json(['status' => true]);
+    // }
+
+    // public function unlockKursi(Request $request)
+    // {
+    //     DB::table('kursi_locks')
+    //         ->where('id_jadwal', $request->id_jadwal)
+    //         ->where('admin_id', auth('admin')->id())
+    //         ->delete();
+
+
+    //     return response()->json(['status' => true]);
+    // }
 }
