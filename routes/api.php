@@ -24,8 +24,12 @@ Route::post('login', [ApiAuthController::class, 'login'])->middleware('guest');
 Route::post('/penumpang/register', [AuthPenumpangController::class, 'register']);
 // Route::get('/penumpang', [ApiPenumpangController::class, 'index']);
 Route::get('/penumpang/{id}', [ApiPenumpangController::class, 'show']);
+// NOTIFIKASI PEMBAYARAN
+Route::get('/pembayaran/notifikasi/{id_penumpang}',    [ApiPenumpangController::class, 'notifikasiPembayaran']);
 
-// Ambil semua rute
+// (opsional) tandai sudah dibaca
+Route::post('/pembayaran/notifikasi/read/{id}',    [ApiPenumpangController::class, 'tandaiDibaca']); 
+
 Route::get('/rute', [ApiPenumpangController::class, 'getRute']);
 
 // Ambil jam/jadwal berdasarkan rute tertentu

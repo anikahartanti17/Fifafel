@@ -16,6 +16,8 @@ class Pembayaran extends Model
         'upload_bukti',
         'batas_waktu_pembayaran',
         'status_konfirmasi',
+        'is_read',
+
     ];
     public function pemesanan()
     {

@@ -19,6 +19,20 @@ class Pemesanan extends Model
         'total_harga',
         'batas_waktu_pembayaran',
     ];
+    public function getJenisPemesananAttribute()
+    {
+        $status = optional($this->pembayaran)->status_konfirmasi;
+
+        if ($status === 'ditempat') {
+            return 'langsung';
+        }
+
+        if ($status) {
+            return 'online';
+        }
+
+        return null;
+    }
     public function penumpang()
     {
         return $this->belongsTo(Penumpang::class, 'id_penumpang', 'id');
@@ -39,5 +53,4 @@ class Pemesanan extends Model
     {
         return $this->belongsTo(Rute::class, 'id_rute');
     }
-    
 }

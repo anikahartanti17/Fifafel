@@ -15,13 +15,22 @@
     @php
         $sudahPilih = request()->has('rute') && request()->has('tanggal') && request()->has('jam');
         $selected = old('kursi', []);
+
         $kursi_map = [];
-        if ($sudahPilih) {
-            foreach ($kursi_terisi as $no_kursi) {
-                $kursi_map[(string) $no_kursi] = 'terisi';
+
+        // kursi terisi permanen
+        foreach ($kursi_terisi as $no_kursi) {
+            $kursi_map[(string) $no_kursi] = 'terisi';
+        }
+
+        // kursi sedang di-lock user lain
+        foreach ($kursi_locked ?? [] as $no_kursi) {
+            if (!isset($kursi_map[(string) $no_kursi])) {
+                $kursi_map[(string) $no_kursi] = 'locked';
             }
         }
     @endphp
+
 
     <div class="py-8 px-6">
         <div class="bg-white rounded-xl shadow-lg p-8 max-w-6xl mx-auto">
@@ -127,19 +136,17 @@
                                     @endphp
 
                                     <label class="cursor-pointer">
-                                        {{-- <input type="checkbox" name="kursi[]" value="{{ $seat }}" class="sr-only"
-                            {{ $isSelected ? 'checked' : '' }}
-                            {{ in_array($status, ['terisi', 'belum']) ? 'disabled' : '' }}> --}}
                                         <input type="checkbox" name="kursi[]" value="{{ $seat }}" class="sr-only"
                                             {{ $isSelected ? 'checked' : '' }}
-                                            {{ in_array($status, ['terisi', 'belum']) ? 'disabled' : '' }}>
-
+                                            {{ in_array($status, ['terisi', 'locked']) ? 'disabled' : '' }}>
 
 
                                         <div
                                             class="seat-box text-sm font-semibold text-center px-3 py-2 rounded-md transition-colors duration-300
-                                            {{ $status === 'terisi' || $status === 'belum' ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : '' }}
-                                            {{ $isSelected ? 'bg-red-600 text-white' : ($status === 'tersedia' ? 'bg-blue-600 text-white hover:bg-blue-700' : '') }}">
+                                                {{ $status === 'terisi' ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : '' }}
+                                                {{ $status === 'locked' ? 'bg-yellow-400 text-black cursor-not-allowed' : '' }}
+                                                {{ $status === 'tersedia' ? 'bg-blue-600 text-white hover:bg-blue-700' : '' }}
+                                            ">
                                             {{ $seat }}
                                         </div>
 
@@ -259,6 +266,73 @@
         window.addEventListener('beforeunload', unlockKursi);
         $('#rute, #jam').on('change', unlockKursi);
     </script> --}}
+
+
+
+    <script>
+        function refreshKursi() {
+            const tanggal = document.getElementById('tanggal')?.value;
+            const idJadwal = document.getElementById('jam')?.value;
+
+            if (!tanggal || !idJadwal) return;
+
+            fetch(`/admin/get-kursi?id_jadwal=${idJadwal}&tanggal=${tanggal}`)
+                .then(res => res.json())
+                .then(res => {
+                    const terisi = (res.terisi ?? []).map(String);
+                    const locked = (res.locked ?? []).map(String);
+
+                    document.querySelectorAll('input[name="kursi[]"]').forEach(cb => {
+                        const seat = cb.value;
+                        const box = cb.closest('label').querySelector('.seat-box');
+
+                        // jangan ganggu kursi yg sedang dipilih admin
+                        if (cb.checked) return;
+
+                        // reset warna dulu (TAPI TIDAK HAPUS SEMUA CLASS)
+                        box.classList.remove(
+                            'bg-gray-300',
+                            'bg-yellow-400',
+                            'bg-blue-600',
+                            'text-gray-500',
+                            'text-black',
+                            'text-white',
+                            'cursor-not-allowed',
+                            'hover:bg-blue-700'
+                        );
+
+                        if (terisi.includes(seat)) {
+                            cb.disabled = true;
+                            box.classList.add(
+                                'bg-gray-300',
+                                'text-gray-500',
+                                'cursor-not-allowed'
+                            );
+                        } else if (locked.includes(seat)) {
+                            cb.disabled = true;
+                            box.classList.add(
+                                'bg-yellow-400',
+                                'text-black',
+                                'cursor-not-allowed'
+                            );
+                        } else {
+                            cb.disabled = false;
+                            box.classList.add(
+                                'bg-blue-600',
+                                'text-white',
+                                'hover:bg-blue-700'
+                            );
+                        }
+                    });
+                });
+        }
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshKursi();
+            setInterval(refreshKursi, 5000);
+        });
+    </script>
 
 
 

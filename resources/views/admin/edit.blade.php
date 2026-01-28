@@ -14,11 +14,20 @@
         $sudahPilih = $id_rute && $tanggal && $id_jadwal;
         $kursi_map = [];
 
-        if ($sudahPilih) {
-            foreach ($kursi_terisi as $no_kursi) {
+        // kursi terisi permanen (KECUALI kursi milik pemesanan ini)
+        foreach ($kursi_terisi as $no_kursi) {
+            if (!in_array($no_kursi, $selected)) {
                 $kursi_map[(string) $no_kursi] = 'terisi';
             }
         }
+
+        // kursi locked sementara
+        foreach ($kursi_locked ?? [] as $no_kursi) {
+            if (!isset($kursi_map[(string) $no_kursi]) && !in_array($no_kursi, $selected)) {
+                $kursi_map[(string) $no_kursi] = 'locked';
+            }
+        }
+
     @endphp
 
     <div class="py-8 px-6">
@@ -92,21 +101,19 @@
                                 @php
                                     $status = $sudahPilih ? $kursi_map[(string) $seat] ?? 'tersedia' : 'belum';
                                     $isSelected = in_array($seat, $selected);
-                                    $disabled = $status === 'terisi' && !$isSelected;
-
-                                    $classes =
-                                        'seat-box text-sm font-semibold text-center px-3 py-2 rounded-md transition ';
-                                    $classes .= $disabled
-                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                        : ($isSelected
-                                            ? 'bg-red-600 text-white'
-                                            : 'bg-blue-600 text-white hover:bg-blue-700');
                                 @endphp
 
                                 <label class="cursor-pointer">
                                     <input type="checkbox" name="kursi[]" value="{{ $seat }}" class="sr-only"
-                                        {{ $isSelected ? 'checked' : '' }} {{ $disabled ? 'disabled' : '' }}>
-                                    <div class="{{ $classes }}" data-disabled="{{ $disabled ? '1' : '0' }}">
+                                        {{ $isSelected ? 'checked' : '' }}
+                                        {{ in_array($status, ['terisi', 'locked']) && !$isSelected ? 'disabled' : '' }}>
+
+                                    <div
+                                        class="seat-box text-sm font-semibold text-center px-3 py-2 rounded-md transition
+                                        {{ $status === 'terisi' ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : '' }}
+                                        {{ $status === 'locked' ? 'bg-yellow-400 text-black cursor-not-allowed' : '' }}
+                                        {{ $isSelected ? 'bg-red-600 text-white' : '' }}
+                                        {{ $status === 'tersedia' && !$isSelected ? 'bg-blue-600 text-white hover:bg-blue-700' : '' }}">
                                         {{ $seat }}
                                     </div>
                                 </label>
@@ -124,32 +131,8 @@
     </div>
 
     <script>
-        function updateSeatColor(checkbox) {
-            const box = checkbox.closest('label').querySelector('.seat-box');
-            const isChecked = checkbox.checked;
-            const isDisabled = box.dataset.disabled === '1';
-
-            box.classList.remove(
-                'bg-blue-600', 'hover:bg-blue-700',
-                'bg-red-600', 'text-white',
-                'bg-gray-300', 'text-gray-500', 'cursor-not-allowed'
-            );
-
-            if (isDisabled) {
-                box.classList.add('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
-            } else if (isChecked) {
-                box.classList.add('bg-red-600', 'text-white');
-            } else {
-                box.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('input[name="kursi[]"]').forEach(cb => {
-                cb.addEventListener('change', () => updateSeatColor(cb));
-                updateSeatColor(cb);
-            });
-        });
+        let protectedSeats = new Set(@json(array_map('strval', $selected)));
+        let lastSelectedSeat = null;
     </script>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -181,44 +164,67 @@
     </script>
     <script>
         function refreshKursi() {
-            const idRute = $('#rute-select').val();
-            const tanggal = $('#tanggal').val();
-            const idJadwal = $('#jadwal-select').val();
+            const tanggal = document.getElementById('tanggal')?.value;
+            const idJadwal = document.getElementById('jadwal-select')?.value;
 
-            if (!idRute || !tanggal || !idJadwal) return;
+            if (!tanggal || !idJadwal) return;
 
-            $.ajax({
-                url: '/admin/get-kursi',
-                type: 'GET',
-                data: {
-                    id_rute: idRute,
-                    tanggal: tanggal,
-                    id_jadwal: idJadwal
-                },
-                success: function(res) {
-                    const terisi = res.data.map(String);
+            fetch(
+                    `/admin/get-kursi?id_jadwal=${idJadwal}&tanggal=${tanggal}&ignore_pemesanan={{ $pemesanan->id_pemesanan }}`)
+                .then(res => res.json())
+                .then(res => {
+                    const terisi = (res.terisi ?? []).map(String);
+                    const locked = (res.locked ?? []).map(String);
 
                     document.querySelectorAll('input[name="kursi[]"]').forEach(cb => {
                         const seat = cb.value;
                         const box = cb.closest('label').querySelector('.seat-box');
 
-                        cb.disabled = false;
-                        box.dataset.disabled = '0';
-
-                        if (terisi.includes(seat) && !cb.checked) {
-                            cb.disabled = true;
-                            box.dataset.disabled = '1';
+                        if (
+                            cb.checked ||
+                            seat === lastSelectedSeat ||
+                            protectedSeats.has(seat)
+                        ) {
+                            return;
                         }
 
-                        updateSeatColor(cb);
+
+
+                        box.classList.remove(
+                            'bg-gray-300',
+                            'bg-yellow-400',
+                            'bg-blue-600',
+                            'text-gray-500',
+                            'text-black',
+                            'text-white',
+                            'cursor-not-allowed',
+                            'hover:bg-blue-700'
+                        );
+
+                        if (terisi.includes(seat)) {
+                            cb.disabled = true;
+                            box.classList.add('bg-gray-300', 'text-gray-500', 'cursor-not-allowed');
+                        } else if (locked.includes(seat)) {
+                            cb.disabled = true;
+                            box.classList.add('bg-yellow-400', 'text-black', 'cursor-not-allowed');
+                        } else {
+                            cb.disabled = false;
+                            box.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+                        }
                     });
-                }
-            });
+
+                    // ✅ RESET SETELAH REFRESH BERHASIL
+                    lastSelectedSeat = null;
+                });
+
         }
 
-        // auto trigger
-        $('#rute-select, #tanggal, #jadwal-select').on('change', refreshKursi);
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshKursi();
+            setInterval(refreshKursi, 5000);
+        });
     </script>
+
     <script>
         $(document).ready(function() {
             // refresh kursi saat halaman edit dibuka
@@ -246,8 +252,43 @@
                 data: {
                     _token: '{{ csrf_token() }}',
                     id_jadwal: $('#jadwal-select').val(),
-                    kursi: selected
+                    kursi: selected,
+                    ignore_pemesanan: '{{ $pemesanan->id_pemesanan }}'
                 }
+            });
+        });
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('input[name="kursi[]"]').forEach(cb => {
+                cb.addEventListener('change', function() {
+                    if (!this.checked) return;
+
+                    const newSeat = this.value;
+
+                    // 🔴 kursi lama TIDAK lagi dilindungi
+                    protectedSeats.clear();
+                    protectedSeats.add(newSeat);
+
+                    lastSelectedSeat = newSeat;
+
+                    document.querySelectorAll('input[name="kursi[]"]').forEach(other => {
+                        const box = other.closest('label').querySelector('.seat-box');
+
+                        if (other !== this) {
+                            other.checked = false;
+                            other.disabled = false;
+
+                            box.className =
+                                'seat-box text-sm font-semibold text-center px-3 py-2 rounded-md transition ' +
+                                'bg-blue-600 text-white hover:bg-blue-700';
+                        }
+                    });
+
+                    const box = this.closest('label').querySelector('.seat-box');
+                    box.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                    box.classList.add('bg-red-600', 'text-white');
+                });
             });
         });
     </script>

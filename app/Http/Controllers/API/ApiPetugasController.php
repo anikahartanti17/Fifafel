@@ -47,66 +47,53 @@ class ApiPetugasController extends Controller
     // Ambil kursi tersedia per rute, tanggal, dan jadwal
     public function getKursiTersedia(Request $request)
     {
-        $id_rute = $request->query('rute');
         $id_jadwal = $request->query('jam');
-        $tanggal = $request->query('tanggal');
-    
-        // ✅ Validasi parameter wajib
-        if (!$id_rute || !$tanggal || !$id_jadwal) {
+        $tanggal   = $request->query('tanggal');
+
+        if (!$id_jadwal || !$tanggal) {
             return response()->json([
-                'status' => false,
-                'message' => 'Parameter kurang lengkap',
-                'data' => []
+                'tersedia' => [],
+                'terisi' => [],
+                'locked' => [],
             ]);
         }
-    
-        // ✅ Pastikan jadwal valid
-        $jadwal = Jadwal::find($id_jadwal);
-        if (!$jadwal) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Jadwal tidak ditemukan',
-                'data' => []
-            ]);
-        }
-    
-        // ✅ Ambil data kursi yang sudah ada pemesanan pada tanggal dan jadwal tersebut
-        $kursiTerisi = DB::table('detail_pemesanan')
+
+        // 🔴 kursi terisi permanen
+        $terisi = DB::table('detail_pemesanan')
             ->join('pemesanan', 'detail_pemesanan.id_pemesanan', '=', 'pemesanan.id_pemesanan')
             ->join('pembayaran', 'pemesanan.id_pemesanan', '=', 'pembayaran.id_pemesanan')
+            ->join('kursi', 'detail_pemesanan.id_kursi', '=', 'kursi.id_kursi')
             ->where('pemesanan.id_jadwal', $id_jadwal)
             ->where('pemesanan.tanggal_keberangkatan', $tanggal)
-            ->select('detail_pemesanan.id_kursi', 'pembayaran.status_konfirmasi')
-            ->get();
-    
-        // ✅ Ambil semua kursi, tandai statusnya
-        $kursiSemua = Kursi::all()->map(function ($k) use ($kursiTerisi) {
-            $status = 'kosong'; // default bisa dipesan
-    
-            foreach ($kursiTerisi as $terisi) {
-                if ($terisi->id_kursi == $k->id_kursi) {
-                    // ❌ Hanya status berikut yang membuat kursi tidak bisa dipilih
-                    if (in_array($terisi->status_konfirmasi, ['menunggu', 'berhasil', 'ditempat'])) {
-                        $status = 'terisi';
-                        break; // keluar loop karena kursi ini sudah terisi
-                    }
-                    // ✅ Jika 'tolak', tetap kosong (bisa dipesan lagi)
-                }
-            }
-    
-            return [
-                'id_kursi' => $k->id_kursi,
-                'no_kursi' => $k->no_kursi,
-                'status' => $status,
-            ];
-        });
-    
+            ->whereIn('pembayaran.status_konfirmasi', [
+                'menunggu',
+                'berhasil',
+                'ditempat'
+            ])
+            ->pluck('kursi.no_kursi')
+            ->toArray();
+
+        // 🟡 kursi di-lock sementara
+        $locked = DB::table('kursi_locks')
+            ->join('kursi', 'kursi.id_kursi', '=', 'kursi_locks.id_kursi')
+            ->where('id_jadwal', $id_jadwal)
+            ->where('locked_until', '>', now())
+            ->pluck('kursi.no_kursi')
+            ->toArray();
+
+        // 🟢 semua kursi
+        $allSeats = Kursi::pluck('no_kursi')->toArray();
+
+        // ✅ tersedia = semua - terisi - locked
+        $tersedia = array_values(array_diff($allSeats, $terisi, $locked));
+
         return response()->json([
-            'status' => true,
-            'message' => 'Data kursi berhasil diambil',
-            'data' => $kursiSemua
+            'tersedia' => $tersedia,
+            'terisi'   => $terisi,
+            'locked'   => $locked,
         ]);
     }
+
 
 
 

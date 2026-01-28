@@ -17,7 +17,8 @@ return new class extends Migration
             $table->decimal('jumlah_pembayaran', 10, 2);
             $table->dateTime('batas_waktu_pembayaran');
             $table->string('upload_bukti', 100)->nullable();
-            $table->enum('status_konfirmasi', ['menunggu', 'berhasil', 'ditolak','ditempat'])->default('menunggu');
+            $table->enum('status_konfirmasi', ['menunggu', 'berhasil', 'ditolak', 'ditempat'])->default('menunggu');
+            $table->boolean('is_read')->default(0);
             $table->timestamps();
 
             $table->foreign('id_pemesanan')->references('id_pemesanan')->on('pemesanan')->onDelete('cascade');

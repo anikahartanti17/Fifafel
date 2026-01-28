@@ -6,6 +6,7 @@ use App\Models\{DetailPemesanan, Jadwal, Kursi, Pembayaran, Pemesanan, Penumpang
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\KursiLockService;
 
 class PemesananController extends Controller
 {
@@ -93,12 +94,28 @@ class PemesananController extends Controller
             });
         }
 
-        $pemesanans = $query->orderByDesc('id_pemesanan')->get()->unique('id_pemesanan')->values();
+        $allPemesanans = $query
+            ->orderByDesc('id_pemesanan')
+            ->get()
+            ->unique('id_pemesanan')
+            ->values();
 
-        $pemesanans = $pemesanans->map(function ($item) {
-            $item->nama_kursi = $item->detail_pemesanan->pluck('kursi.nama_kursi')->implode(', ');
+        $pemesananLangsung = $allPemesanans->filter(function ($item) {
+            return optional($item->pembayaran)->status_konfirmasi === 'ditempat';
+        });
+
+        $pemesananOnline = $allPemesanans->filter(function ($item) {
+            return optional($item->pembayaran)->status_konfirmasi !== 'ditempat';
+        });
+
+
+        $allPemesanans = $allPemesanans->map(function ($item) {
+            $item->nama_kursi = $item->detail_pemesanan
+                ->pluck('kursi.nama_kursi')
+                ->implode(', ');
             return $item;
         });
+
 
         $rutes = $ruteDiizinkan !== null
             ? Rute::whereIn('id_rute', $ruteDiizinkan)->get()
@@ -114,7 +131,13 @@ class PemesananController extends Controller
 
         $statuses = ['menunggu', 'berhasil', 'ditolak', 'ditempat'];
 
-        return view('admin.pemesanan', compact('pemesanans', 'rutes', 'jams', 'statuses'));
+        return view('admin.pemesanan', compact(
+            'pemesananLangsung',
+            'pemesananOnline',
+            'rutes',
+            'jams',
+            'statuses'
+        ));
     }
 
     public function create()
@@ -138,7 +161,7 @@ class PemesananController extends Controller
             'id_jadwal' => 'required|exists:jadwal,id_jadwal',
             'tanggal' => 'required|date',
             'kursi' => 'required|array|min:1',
-            'kursi.*' => 'exists:kursi,id_kursi',
+            'kursi.*' => 'exists:kursi,no_kursi',
             'nama' => 'required|array',
             'nama.*' => 'required|string|max:255',
         ]);
@@ -182,9 +205,11 @@ class PemesananController extends Controller
             'batas_waktu_pembayaran' => now(),
             'status_konfirmasi' => 'ditempat',
         ]);
-        DB::table('kursi_locks')
-            ->where('id_jadwal', $request->id_jadwal)
-            ->delete();
+        KursiLockService::unlock(
+            $request->id_jadwal,
+            $kursiArray // hanya kursi yang dipakai
+        );
+
 
         return redirect()->route('pemesanan.index')->with('success', 'Pemesanan berhasil disimpan dan dianggap lunas!');
     }
@@ -239,66 +264,59 @@ class PemesananController extends Controller
     public function update(Request $request, $id)
     {
         $request->validate([
-            'id_rute' => 'required|exists:rute,id_rute',
+            'nama'      => 'required|string|max:255',
+            'id_rute'   => 'required|exists:rute,id_rute',
             'id_jadwal' => 'required|exists:jadwal,id_jadwal',
-            'tanggal' => 'required|date',
-            'kursi' => 'required|array|min:1',
-            'kursi.*' => 'exists:kursi,no_kursi',
-            'nama' => 'required|array',
-            'nama.*' => 'required|string|max:255',
+            'tanggal'   => 'required|date',
+            'kursi'     => 'required|array|min:1',
+            'kursi.*'   => 'exists:kursi,no_kursi',
         ]);
 
-        // Ambil input sebagai array lokal
-        $kursiArray = $request->input('kursi');
-        $namaArray = $request->input('nama');
+        DB::transaction(function () use ($request, $id) {
 
-        $valid = Jadwal::where('id_jadwal', $request->id_jadwal)
-            ->where('id_rute', $request->id_rute)
-            ->exists();
+            $pemesanan = Pemesanan::with([
+                'penumpang',
+                'detail_pemesanan'
+            ])->findOrFail($id);
 
-        if (!$valid) return back()->withErrors(['id_jadwal' => 'Jadwal tidak sesuai dengan rute yang dipilih.']);
+            // ✅ 1. UPDATE NAMA (BUKAN CREATE)
+            $pemesanan->penumpang->update([
+                'nama_penumpang' => $request->nama
+            ]);
 
-        DB::transaction(function () use ($request, $id, $kursiArray, $namaArray) {
-            $pemesanan = Pemesanan::with('detail_pemesanan.penumpang')->findOrFail($id);
+            // ✅ 2. HAPUS DETAIL KURSI LAMA (JANGAN HAPUS PENUMPANG)
+            DetailPemesanan::where('id_pemesanan', $pemesanan->id_pemesanan)->delete();
 
-            // Hapus detail lama & penumpang lama
-            foreach ($pemesanan->detail_pemesanan as $detail) {
-                $detail->penumpang->delete();
-                $detail->delete();
-            }
-
-            // Update pemesanan utama
+            // ✅ 3. UPDATE JADWAL & TANGGAL
             $pemesanan->update([
                 'id_jadwal' => $request->id_jadwal,
                 'tanggal_keberangkatan' => $request->tanggal,
             ]);
 
-            // Ambil ID kursi
-            $kursis = Kursi::whereIn('no_kursi', $kursiArray)->pluck('id_kursi', 'no_kursi');
+            // ✅ 4. SIMPAN KURSI BARU
+            $kursis = Kursi::whereIn('no_kursi', $request->kursi)
+                ->pluck('id_kursi', 'no_kursi');
 
-            // Simpan detail pemesanan baru
-            foreach ($kursiArray as $seatNo) {
-                $penumpang = Penumpang::create(['nama_penumpang' => $namaArray[$seatNo]]);
+            foreach ($request->kursi as $seatNo) {
                 DetailPemesanan::create([
                     'id_pemesanan' => $pemesanan->id_pemesanan,
-                    'id_penumpang' => $penumpang->id,
-                    'id_kursi' => $kursis[$seatNo],
+                    'id_penumpang' => $pemesanan->id_penumpang, // ⬅️ PAKAI YANG LAMA
+                    'id_kursi'     => $kursis[$seatNo],
                 ]);
             }
 
-            // Update total pembayaran
-            $harga = Jadwal::find($request->id_jadwal)->rute->harga ?? 0;
-            Pembayaran::updateOrCreate(
-                ['id_pemesanan' => $pemesanan->id_pemesanan],
-                ['jumlah_pembayaran' => $harga * count($kursiArray)]
+            // ✅ 5. UNLOCK KURSI
+            KursiLockService::unlock(
+                $request->id_jadwal,
+                $request->kursi
             );
         });
-        DB::table('kursi_locks')
-            ->where('id_jadwal', $request->id_jadwal)
-            ->delete();
 
-        return redirect()->route('pemesanan.index')->with('success', 'Pemesanan berhasil diperbarui.');
+        return redirect()
+            ->route('pemesanan.index')
+            ->with('success', 'Nama & kursi berhasil diperbarui.');
     }
+
     public function getByRute($id_rute)
     {
         $jadwals = Jadwal::where('id_rute', $id_rute)->get();
@@ -311,12 +329,16 @@ class PemesananController extends Controller
     {
         $id_jadwal = $request->id_jadwal;
         $tanggal   = $request->tanggal;
+        $ignoreId  = $request->ignore_pemesanan;
 
         if (!$id_jadwal || !$tanggal) {
-            return response()->json(['data' => []]);
+            return response()->json([
+                'terisi' => [],
+                'locked' => []
+            ]);
         }
 
-        $kursiTerisi = DB::table('detail_pemesanan')
+        $query = DB::table('detail_pemesanan')
             ->join('pemesanan', 'detail_pemesanan.id_pemesanan', '=', 'pemesanan.id_pemesanan')
             ->join('pembayaran', 'pemesanan.id_pemesanan', '=', 'pembayaran.id_pemesanan')
             ->join('kursi', 'detail_pemesanan.id_kursi', '=', 'kursi.id_kursi')
@@ -326,12 +348,28 @@ class PemesananController extends Controller
                 'menunggu',
                 'ditempat',
                 'berhasil'
-            ])
+            ]);
+
+        // 🔥 INI KUNCI UTAMANYA
+        if ($ignoreId) {
+            $query->where('pemesanan.id_pemesanan', '!=', $ignoreId);
+        }
+
+        $kursiTerisi = $query->pluck('kursi.no_kursi')->toArray();
+
+        $kursiLocked = DB::table('kursi_locks')
+            ->join('kursi', 'kursi.id_kursi', '=', 'kursi_locks.id_kursi')
+            ->where('id_jadwal', $id_jadwal)
+            ->where('locked_until', '>', now())
             ->pluck('kursi.no_kursi')
             ->toArray();
 
-        return response()->json(['data' => $kursiTerisi]);
+        return response()->json([
+            'terisi' => $kursiTerisi,
+            'locked' => $kursiLocked
+        ]);
     }
+
 
 
     public function getJadwal(Request $request)
@@ -391,12 +429,18 @@ class PemesananController extends Controller
         if ($id_rute && $tanggal && $id_jadwal) {
             $kursi_terisi = DB::table('detail_pemesanan')
                 ->join('pemesanan', 'detail_pemesanan.id_pemesanan', '=', 'pemesanan.id_pemesanan')
+                ->join('pembayaran', 'pemesanan.id_pemesanan', '=', 'pembayaran.id_pemesanan')
                 ->join('kursi', 'detail_pemesanan.id_kursi', '=', 'kursi.id_kursi')
-                ->join('jadwal', 'pemesanan.id_jadwal', '=', 'jadwal.id_jadwal')
-                ->where('pemesanan.tanggal_keberangkatan', $tanggal)
                 ->where('pemesanan.id_jadwal', $id_jadwal)
-                ->where('jadwal.id_rute', $id_rute)
+                ->where('pemesanan.tanggal_keberangkatan', $tanggal)
+                ->whereIn('pembayaran.status_konfirmasi', [
+                    'menunggu',
+                    'ditempat',
+                    'berhasil'
+                ])
                 ->pluck('kursi.no_kursi')
+                ->unique()
+                ->values()
                 ->toArray();
         }
 
@@ -404,8 +448,16 @@ class PemesananController extends Controller
         $seats = [1, 2, null, 'driver', null, 3, 4, 5, 6, null, 7, 8, 9, null, 10, 11, 12, 13, 14, 15];
         $sudahPilih = $id_rute && $tanggal && $id_jadwal;
 
+        $kursi_locked = DB::table('kursi_locks')
+            ->where('id_jadwal', $id_jadwal)
+            ->where('locked_until', '>', now())
+            ->join('kursi', 'kursi.id_kursi', '=', 'kursi_locks.id_kursi')
+            ->pluck('kursi.no_kursi')
+            ->toArray();
+
         return view('admin.add', compact(
             'kursi_terisi',
+            'kursi_locked',
             'seats',
             'rutes',
             'jadwals',
@@ -416,50 +468,4 @@ class PemesananController extends Controller
             'sudahPilih'
         ));
     }
-    // public function lockKursi(Request $request)
-    // {
-    //     DB::table('kursi_locks')
-    //         ->where('id_jadwal', $request->id_jadwal)
-    //         ->where('admin_id', auth('admin')->id())
-    //         ->delete();
-
-    //     $request->validate([
-    //         'id_jadwal' => 'required|exists:jadwal,id_jadwal',
-    //         'kursi' => 'required|array'
-    //     ]);
-
-    //     $lockedUntil = now()->addMinutes(15);
-
-    //     $kursiMap = Kursi::whereIn('no_kursi', $request->kursi)
-    //         ->pluck('id_kursi', 'no_kursi');
-
-    //     foreach ($request->kursi as $noKursi) {
-    //         if (!isset($kursiMap[$noKursi])) continue;
-
-    //         DB::table('kursi_locks')->updateOrInsert(
-    //             [
-    //                 'id_jadwal' => $request->id_jadwal,
-    //                 'id_kursi'  => $kursiMap[$noKursi],
-    //                 'admin_id'  => auth('admin')->id(),
-    //             ],
-    //             [
-    //                 'locked_until' => $lockedUntil,
-    //                 'updated_at' => now(),
-    //             ]
-    //         );
-    //     }
-
-    //     return response()->json(['status' => true]);
-    // }
-
-    // public function unlockKursi(Request $request)
-    // {
-    //     DB::table('kursi_locks')
-    //         ->where('id_jadwal', $request->id_jadwal)
-    //         ->where('admin_id', auth('admin')->id())
-    //         ->delete();
-
-
-    //     return response()->json(['status' => true]);
-    // }
 }
